@@ -29,6 +29,21 @@
 export const DEFAULT_SERVER_PORT = 3334
 export const VITE_DEV_PORT = 3333
 
+/**
+ * A fixed remote office server, set at build time with
+ * VITE_AGENT_OFFICE_SERVER (e.g. a Cloudflare Worker that hosts the office:
+ * `https://agent-office.<account>.workers.dev`). When set it wins over the
+ * origin/port derivation below, so the Pages-hosted UI can talk to a Worker on
+ * a different host: HTTP to this base, WebSocket to its ws(s) form + /ws. The
+ * office token still travels as a subprotocol (src/officeToken.ts), and the
+ * Worker already allows the Pages origin (CORS `*`, cross-origin WS upgrade).
+ * Empty (the default) keeps the single-origin desktop/dev behaviour.
+ */
+export function officeServerBase(): string {
+  const raw = (import.meta.env.VITE_AGENT_OFFICE_SERVER ?? '') as string
+  return raw ? raw.replace(/\/+$/, '') : ''
+}
+
 /** The parts of window.location the helpers read. */
 export interface PageLocation {
   protocol: string
@@ -74,6 +89,8 @@ export function isDevServerPage(loc: PageLocation = pageLocation(), env: BuildEn
 
 /** The server's http(s) origin, no trailing slash: fetch(`${officeHttpBase()}/chat`). */
 export function officeHttpBase(loc: PageLocation = pageLocation(), env: BuildEnv = buildEnv()): string {
+  const base = officeServerBase()
+  if (base) return base
   if (!isDevServerPage(loc, env)) return loc.origin
   // 127.0.0.1, never the page's own host name: `localhost` can resolve to
   // [::1] first (macOS does), where any local user could be listening while
@@ -83,6 +100,8 @@ export function officeHttpBase(loc: PageLocation = pageLocation(), env: BuildEnv
 
 /** The WebSocket URL: wss when the page is https, ws otherwise. */
 export function officeWsUrl(loc: PageLocation = pageLocation(), env: BuildEnv = buildEnv()): string {
+  const base = officeServerBase()
+  if (base) return `${base.replace(/^http/, 'ws')}/ws`
   if (!isDevServerPage(loc, env)) return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`
   return `ws://127.0.0.1:${configuredServerPort(env)}/ws`
 }
